@@ -112,8 +112,9 @@
       alcance: 2.0,
       alturaRender: 360, // resolução interna baixa = visual de PS1 e leveza
       alturaRenderToque: 300,
-      dica1: 45, // segundos na mesma missão até a primeira dica + seta laranja
-      dica2: 120
+      dica1: 45, // segundos na mesma missão até a primeira dica (texto)
+      dica2: 120, // dica mais detalhada
+      seta: 360 // a seta laranja só aparece depois de 6 minutos travado
     };
 
     // Planta do bairro (metros). x cresce para o leste, z para o sul.
@@ -140,17 +141,17 @@
 
     // Ponto de Internet Comunitário (terreno ao lado da escola, entre a Rua A e a Rua Principal).
     S.PONTO = {
-      laje: { x0: 35, x1: 47.3, z0: 8.2, z1: 15.6, y: 0.08 },
+      laje: { x0: 35, x1: 47.3, z0: 10.2, z1: 17.6, y: 0.08 },
       // Abrigo: banco encostado no painel, mesa na frente, tomadas de rede nas pontas do banco.
-      banco: { x0: 38.4, x1: 40.4, z: 10.22 },
-      mesa: { x0: 38.3, x1: 40.5, z0: 10.8, z1: 11.4, alt: 0.74 },
+      banco: { x0: 38.4, x1: 40.4, z: 12.22 },
+      mesa: { x0: 38.3, x1: 40.5, z0: 12.8, z1: 13.4, alt: 0.74 },
       keystones: [
-        { id: 'keystoneE', x: 38.05, z: 10.22, lado: 'esquerdo', sentarX: 38.85 },
-        { id: 'keystoneD', x: 40.75, z: 10.22, lado: 'direito', sentarX: 39.95 }
+        { id: 'keystoneE', x: 38.05, z: 12.22, lado: 'esquerdo', sentarX: 38.85 },
+        { id: 'keystoneD', x: 40.75, z: 12.22, lado: 'direito', sentarX: 39.95 }
       ],
-      central: { x0: 43.0, x1: 46.6, z0: 9.0, z1: 12.8, porta0: 45.2, porta1: 46.2, alt: 2.5 },
-      poste: { x: 42.15, z: 13.6 },
-      arvore: { x: 36.2, z: 10.2 },
+      central: { x0: 43.0, x1: 46.6, z0: 11.0, z1: 14.8, porta0: 45.2, porta1: 46.2, alt: 2.5 },
+      poste: { x: 42.2, z: 11.6 }, // atrás, alinhado com o painel do abrigo
+      arvore: { x: 36.2, z: 12.4 },
       chegada: { x0: 34.2, x1: 47.6, z0: 3.2, z1: 24.8 }
     };
 
@@ -735,7 +736,7 @@
       if (!camadaAviso) {
         camadaAviso = S.el('div', {
           position: 'absolute',
-          top: '12px',
+          bottom: '62px',
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: '25',
@@ -758,10 +759,13 @@
         alerta: ['#C98A10', '#10203A'],
         info: [C.painel2, C.branco]
       }[tipo || 'info'];
+      // Sempre embaixo, no centro: acima do texto de interação e da seta de direção,
+      // para não tapar o objetivo e os botões do topo.
       var baixo = S.ui.compacto();
-      camadaAviso.style.top = baixo ? 'auto' : '12px';
-      camadaAviso.style.bottom = baixo ? '64px' : 'auto';
-      camadaAviso.style.maxWidth = baixo && S.toque ? 'calc(100% - 300px)' : 'min(560px, calc(100% - 24px))';
+      var bussola = S.hud && S.hud.bussola && S.hud.bussola.style.display !== 'none';
+      camadaAviso.style.top = 'auto';
+      camadaAviso.style.bottom = (bussola ? (baixo ? 92 : 100) : (baixo ? 56 : 62)) + 'px';
+      camadaAviso.style.maxWidth = S.toque ? 'calc(100% - 300px)' : 'min(560px, calc(100% - 24px))';
       camadaAviso.style.fontSize = baixo ? '13px' : '14px';
       camadaAviso.textContent = texto;
       camadaAviso.style.background = cores[0];
@@ -1132,10 +1136,10 @@
         fontSize: '12px'
       }, '', hud.missao);
 
-      // Bússola: aponta o caminho até o ponto (depois que o mapa foi aberto).
+      // Bússola (embaixo, no centro): aponta o caminho até o ponto depois que o mapa foi aberto.
       hud.bussola = S.el('div', {
         position: 'absolute',
-        top: '10px',
+        bottom: '58px',
         left: '50%',
         transform: 'translateX(-50%)',
         display: 'none',
@@ -1742,9 +1746,15 @@
     };
 
     // A sombra acompanha o personagem (o bairro é grande demais para uma sombra só).
+    // O centro anda em degraus de 6 m: a sombra não "treme" enquanto o personagem anda.
     S.posicionarSol = function (x, z) {
-      S.sol.position.set(x + 8, 18, z + 6);
-      S.sol.target.position.set(x, 0, z);
+      var cx = Math.round(x / 6) * 6;
+      var cz = Math.round(z / 6) * 6;
+      if (S.sol.__cx === cx && S.sol.__cz === cz) return;
+      S.sol.__cx = cx;
+      S.sol.__cz = cz;
+      S.sol.position.set(cx + 8, 18, cz + 6);
+      S.sol.target.position.set(cx, 0, cz);
     };
 
     // Renderiza em baixa resolução (≈360 linhas) e amplia com pixels nítidos.
@@ -1793,8 +1803,6 @@
         ctx.fillStyle = '#55585C';
         ctx.fillRect(0, 0, w, h);
         ruido(ctx, w, h, ['#4A4D51', '#606368', '#6A6C70', '#3F4246'], 300, rnd);
-        ctx.fillStyle = 'rgba(30,30,30,0.25)';
-        ctx.fillRect(4, 18, 9, 5); // remendo
       }, [rx, rz]);
     };
 
@@ -2500,7 +2508,6 @@
       B.palmeira(X0 + 1.2, meioZ - 1.8, 4.6 + rnd(), c.id * 3);
       if (c.id !== 1) B.palmeira(X1 - 1.2, meioZ + 1.8, 4.2 + rnd(), c.id * 3 + 1);
       varal(bB.x1 - 5.5, pz1 - 2.0, 3.2, rnd);
-      garagem(bB.x0 + 6.4, pz1 - 1.7, 3.2, 2.8, rnd);
       for (var a = 0; a < 5; a++) B.arbusto(bA.x0 + rnd() * L, pz0 + 1.45 + rnd() * 0.2, 0.6 + rnd() * 0.5);
       return c;
     };
@@ -2664,12 +2671,12 @@
       var L = P.laje;
       var m = S.caixa(L.x1 - L.x0, L.y, L.z1 - L.z0, S.matTex(T.concreto((L.x1 - L.x0) / 1.5, (L.z1 - L.z0) / 1.5)), (L.x0 + L.x1) / 2, L.y / 2, (L.z0 + L.z1) / 2);
       m.castShadow = false;
-      S.chao(L.x0 - 1.4, L.x0, 11.2, 12.8, 0.03, S.matTex(T.concreto(1, 1)));
+      S.chao(L.x0 - 1.4, L.x0, 13.2, 14.8, 0.03, S.matTex(T.concreto(1, 1)));
     }
 
     // Placa: logo do Senac numa coluna branca à esquerda, texto à direita.
     function placaPonto() {
-      var g = S.grupo(35.6, 0, 16.6);
+      var g = S.grupo(35.6, 0, 18.6);
       g.rotation.y = -0.35;
       var mPoste = S.mat(0x3b4048);
       S.caixa(0.1, 1.9, 0.1, mPoste, -0.95, 0.95, 0, g);
@@ -2705,7 +2712,7 @@
       placa.position.y = 1.55;
       placa.castShadow = true;
       g.add(placa);
-      S.colisor(35.6, 16.6, 2.1, 0.4);
+      S.colisor(35.6, 18.6, 2.1, 0.4);
     }
 
     // ---- Abrigo: banco encostado no painel e mesa na frente ------------------
@@ -2713,14 +2720,14 @@
       var y = P.laje.y;
       var mAb = S.mat(S.COR.abrigo);
       var mAbE = S.mat(0x7f77bd);
-      S.caixa(4.0, 1.7, 0.2, mAb, 39.4, 0.85 + y, 9.65);
+      S.caixa(4.0, 1.7, 0.2, mAb, 39.4, 0.85 + y, 11.65);
       [37.65, 41.15].forEach(function (x) {
-        S.cilindro(0.06, 0.06, 2.55, 6, mAbE, x, 1.3 + y, 12.0);
-        S.colisor(x, 12.0, 0.15, 0.15);
+        S.cilindro(0.06, 0.06, 2.55, 6, mAbE, x, 1.3 + y, 14.0);
+        S.colisor(x, 14.0, 0.15, 0.15);
       });
       // Cobertura curva (em gomos) para não molhar quem senta; fica translúcida se tapar a câmera.
       var mTeto = S.matUnico(S.COR.abrigo);
-      var gomos = [[9.45, 2.55, -0.35], [10.35, 2.72, -0.08], [11.25, 2.72, 0.08], [12.15, 2.55, 0.35]].map(function (gm) {
+      var gomos = [[11.45, 2.55, -0.35], [12.35, 2.72, -0.08], [13.25, 2.72, 0.08], [14.15, 2.55, 0.35]].map(function (gm) {
         var c = S.caixa(4.3, 0.08, 0.95, mTeto, 39.4, gm[1] + y, gm[0]);
         c.rotation.x = gm[2];
         return c;
@@ -2747,7 +2754,7 @@
       [[me.x0 + 0.08, me.z0 + 0.08], [me.x1 - 0.08, me.z0 + 0.08], [me.x0 + 0.08, me.z1 - 0.08], [me.x1 - 0.08, me.z1 - 0.08]].forEach(function (p) {
         S.caixa(0.07, me.alt, 0.07, mBancoE, p[0], me.alt / 2 + y, p[1]);
       });
-      S.colisorRet(37.8, 41.0, 9.5, me.z1);
+      S.colisorRet(37.8, 41.0, 11.5, me.z1);
       PT.sentar = { y: 0.5 + y, z: b.z + 0.02 };
 
       // Tomadas de rede (keystone): um pedestal em cada ponta do banco.
@@ -2770,7 +2777,7 @@
             id: k.id,
             nome: 'Tomada de rede (keystone) do lado ' + k.lado + ' do banco',
             keystone: k,
-            ancora: new THREE.Vector3(k.x + (k.lado === 'esquerdo' ? 0.3 : -0.3), 0, 12.05),
+            ancora: new THREE.Vector3(k.x + (k.lado === 'esquerdo' ? 0.3 : -0.3), 0, P.mesa.z1 + 0.65),
             setaY: 1.1
           })
         };
@@ -2785,16 +2792,16 @@
       var mPoste = S.mat(0x8a83c9);
       S.caixa(0.32, 0.25, 0.32, mPoste, x, 0.12 + y, z);
       S.caixa(0.14, 3.2, 0.14, mPoste, x, 1.7 + y, z);
-      S.caixa(1.3, 0.1, 0.12, mPoste, x, 3.3 + y, z);
+      S.caixa(1.1, 0.1, 0.12, mPoste, x, 3.3 + y, z);
       PT.lampadas = [];
-      [-0.6, 0.6].forEach(function (dx) {
+      [-0.5, 0.5].forEach(function (dx) {
         S.caixa(0.22, 0.14, 0.22, mPoste, x + dx, 3.32 + y, z);
         var m = S.matUnico(0xf2f2ea, { emissive: 0x000000 });
         S.caixa(0.16, 0.03, 0.16, m, x + dx, 3.24 + y, z, null, true);
         PT.lampadas.push(m);
       });
       S.colisor(x, z, 0.35, 0.35);
-      camera(x - 0.12, 2.75 + y, z - 0.1, -2.2);
+      camera(x - 0.12, 2.75 + y, z + 0.1, -1.0);
     }
 
     function camera(x, y, z, rotY) {
@@ -2888,10 +2895,10 @@
       central();
       energia();
       B.arvore(P.arvore.x, P.arvore.z, 1.0, 0x5d9a3e);
-      B.pinheiro(41.9, 8.7, 0.95);
-      B.arbusto(36.0, 14.7, 1.0);
-      B.arbusto(46.6, 14.9, 0.8);
-      B.lixeira(42.9, 15.0);
+      B.pinheiro(39.4, 9.3, 0.95);
+      B.arbusto(36.0, 16.7, 1.0);
+      B.arbusto(46.6, 16.9, 0.8);
+      B.lixeira(42.6, 17.0);
     };
   });
 
@@ -2960,8 +2967,8 @@
         ctx.fillRect(0, 0, 1, h);
       }, [O.largura / 0.6, O.profundidade / 0.6]);
       S.chao(ox - L2, ox + L2, oz - P2, oz + P2, 0, S.matTex(texPiso));
-      // Chão escuro em volta (o "vazio" fora da casa).
-      S.chao(ox - 12, ox + 12, oz - 10, oz + 10, -0.02, S.mat(0x0d1626));
+      // Tudo fora do quarto é preto sólido (sem luz nem sombra).
+      S.chao(ox - 40, ox + 40, oz - 40, oz + 40, -0.02, new THREE.MeshBasicMaterial({ color: 0x000000 }));
 
       // Paredes com barrado (como as casas dos blocos).
       var texParede = S.textura(32, 32, function (ctx, w, h) {
@@ -3193,6 +3200,7 @@
         ctx.fillRect(0, 0, 1, h);
       }, [O.largura / 0.8, O.profundidade / 0.8]);
       S.chao(ox - L2, ox + L2, oz - P2, oz + P2, 0, S.matTex(texPiso));
+      S.chao(ox - 40, ox + 40, oz - 40, oz + 40, -0.02, new THREE.MeshBasicMaterial({ color: 0x000000 }));
 
       // Paredes: barrado verde-água (a cor da central) e faixa laranja.
       var texParede = S.textura(32, 32, function (ctx, w, h) {
@@ -3401,6 +3409,8 @@
       CI.camera = { pos: new THREE.Vector3(ox, 5.1, oz + 6.3), alvo: new THREE.Vector3(ox, 0.55, oz - 0.45) };
       CI.tomadaRack = { pos: [rx + 0.9, 1.75, rz + 2.1], alvo: [rx, 1.2, rz] };
       CI.tomadaTv = { pos: [ox + 0.6, 1.9, dz + 1.6], alvo: [ox + L2, 1.8, dz] };
+      // Zoom na TV: a tela das câmeras ocupa a imagem toda.
+      CI.tomadaTvZoom = { pos: [ox + L2 - 1.55, 1.85, dz], alvo: [ox + L2, 1.85, dz] };
       PT.desenharRack();
     };
 
@@ -3408,10 +3418,10 @@
     function camerasDeSeguranca() {
       var P = S.PONTO;
       var defs = [
-        { pos: [P.poste.x - 0.1, 2.85, P.poste.z - 0.15], alvo: [39.3, 0.5, 10.5] },
-        { pos: [P.central.x0 + 0.05, 2.45, P.central.z1 + 0.1], alvo: [35.5, 0.5, 15.5] },
-        { pos: [35.1, 3.2, 8.4], alvo: [31, 0, 16] },
-        { pos: [44.8, 3.6, 8.6], alvo: [40, 0, 3] }
+        { pos: [P.poste.x - 0.1, 2.85, P.poste.z - 0.15], alvo: [39.3, 0.5, 12.5] },
+        { pos: [P.central.x0 + 0.05, 2.45, P.central.z1 + 0.1], alvo: [35.5, 0.5, 17.5] },
+        { pos: [35.1, 3.2, 10.4], alvo: [31, 0, 18] },
+        { pos: [44.8, 3.6, 10.6], alvo: [40, 0, 5] }
       ];
       PT.feeds = defs.map(function (d, i) {
         var cam = new THREE.PerspectiveCamera(62, 1.74, 0.1, 55);
@@ -4241,15 +4251,17 @@
       var m = J.missaoAtual();
       if (!m || S.pausado) return;
       var t = (S.agora() - J.progressoEm) / 1000;
-      var nivel = t > S.CFG.dica2 ? 2 : t > S.CFG.dica1 ? 1 : 0;
+      var nivel = t > S.CFG.seta ? 3 : t > S.CFG.dica2 ? 2 : t > S.CFG.dica1 ? 1 : 0;
       if (nivel > J.nivelDica) {
         J.nivelDica = nivel;
         J.dicas++;
-        S.ui.definirDica(nivel === 2 ? m.dica2 : m.dica1);
-        if (nivel === 1) S.aviso('Precisa de ajuda? Siga a seta laranja.', 'alerta');
+        S.ui.definirDica(nivel >= 2 ? m.dica2 : m.dica1);
+        if (nivel === 1) S.aviso('Precisa de ajuda? Veja a dica no quadro do objetivo.', 'alerta');
+        if (nivel === 3) S.aviso('Siga a seta laranja.', 'alerta');
         if (m.id === 'ir') S.ui.destacarMapa(true);
       }
-      if (J.nivelDica > 0) {
+      // A seta laranja só aparece depois de 6 minutos na mesma etapa.
+      if (J.nivelDica >= 3) {
         var alvos = m.alvos();
         var alvo = null;
         for (var i = 0; i < alvos.length && !alvo; i++) {
@@ -4442,11 +4454,16 @@
         S.minigames.rack();
       },
       tv: function () {
-        if (!E.energia) {
-          S.aviso('A TV das câmeras está desligada: o ponto está sem energia.', 'info', 3000);
-          return;
-        }
-        S.aviso('As 4 câmeras de segurança vigiam o banco, a entrada e a rua. As imagens aparecem nesta TV.', 'info', 4200);
+        // Zoom na tela da TV.
+        S.cenaCurta({
+          falas: [{
+            quem: 'aluno',
+            tomada: S.centralInt.tomadaTvZoom,
+            texto: E.energia
+              ? 'Imagens ao vivo das 4 câmeras: o banco, a entrada, a Rua D e os fundos da central.'
+              : 'A TV das câmeras está desligada: o ponto está sem energia.'
+          }]
+        });
       },
       keystoneE: usarKeystone,
       keystoneD: usarKeystone,
@@ -4499,7 +4516,7 @@
       if (!p.sentado) return;
       p.sentado = false;
       p.digitando = false;
-      p.raiz.position.z = 12.05;
+      p.raiz.position.z = P.mesa.z1 + 0.65;
       p.corpo.position.y = 0;
     };
 
@@ -4585,9 +4602,9 @@
       J.atualizarMissoes();
       S.cenaCurta({
         falas: [
-          { quem: 'aluno', tomada: { pos: [33.2, 3.6, 18.6], alvo: [41.2, 1.1, 10.8] }, texto: 'Cheguei! Esse é o Ponto de Internet Comunitário: banco coberto, tomadas de rede e a central.' },
-          { quem: 'aluno', tomada: { pos: [38.5, 1.5, 12.7], alvo: [38.05, 0.5, 10.3] }, texto: 'Hmm... as luzinhas das tomadas estão apagadas. O ponto está desligado.' },
-          { quem: 'aluno', tomada: { pos: [41.6, 2.3, 16.2], alvo: [44.6, 1.4, 12.8] }, texto: 'A placa na porta da central diz para ligar o transformador. Vou lá!' }
+          { quem: 'aluno', tomada: { pos: [33.2, 3.6, 20.6], alvo: [41.2, 1.1, 12.8] }, texto: 'Cheguei! Esse é o Ponto de Internet Comunitário: banco coberto, tomadas de rede e a central.' },
+          { quem: 'aluno', tomada: { pos: [38.5, 1.5, 14.7], alvo: [38.05, 0.5, 12.3] }, texto: 'Hmm... as luzinhas das tomadas estão apagadas. O ponto está desligado.' },
+          { quem: 'aluno', tomada: { pos: [41.6, 2.3, 18.2], alvo: [44.6, 1.4, 14.8] }, texto: 'A placa na porta da central diz para ligar o transformador. Vou lá!' }
         ]
       });
     };
@@ -4604,7 +4621,7 @@
           titulo: 'ATIVIDADE ENVIADA!',
           falas: [
             { quem: 'aluno', tomada: 'sentado', texto: 'Pronto! Atividade enviada para o professor, e ainda deu tempo!' },
-            { quem: 'aluno', tomada: { pos: [37.0, 2.4, 17.5], alvo: [42.5, 1.4, 10.5] }, texto: 'Valeu, ponto comunitário! Internet de graça aqui no Ataliba ajuda todo mundo a estudar.' }
+            { quem: 'aluno', tomada: { pos: [37.0, 2.4, 19.5], alvo: [42.5, 1.4, 12.5] }, texto: 'Valeu, ponto comunitário! Internet de graça aqui no Ataliba ajuda todo mundo a estudar.' }
           ],
           aoFim: function () { S.ui.mostrarFim(); }
         });
@@ -4662,7 +4679,7 @@
       S.interativo([base, tampa, tela], {
         id: 'notebookBanco',
         nome: 'Seu notebook (na mesa)',
-        ancora: new THREE.Vector3(k.sentarX, 0, 12.05),
+        ancora: new THREE.Vector3(k.sentarX, 0, P.mesa.z1 + 0.65),
         setaY: 1.4
       });
       S.montando = anterior;
@@ -4679,7 +4696,7 @@
       S.cena.add(seta);
       S.mundo.seta = { malha: seta, alvo: null };
       S.mundo.pontosFixos = {
-        '@ponto': { area: 'bairro', pos: new THREE.Vector3(40.4, 3.4, 12.4) }
+        '@ponto': { area: 'bairro', pos: new THREE.Vector3(40.4, 3.4, 14.4) }
       };
     };
 
@@ -4723,7 +4740,7 @@
     no('0,14', 0, 14);
     no('31,14', 31, 14);
     no('-31,14', -31, 14);
-    no('ponto', 37.0, 12.2);
+    no('ponto', 37.0, 14.2);
     function ligar(a, b) { ARESTAS.push([a, b]); }
     [-28, 0, 28].forEach(function (z) {
       ligar('-31,' + z, '0,' + z);
@@ -5486,15 +5503,15 @@
       ret(M.ponto, '#7DA35A');
       ret(S.PONTO.laje, '#CBC7BD');
       ret({ x0: S.PONTO.central.x0, x1: S.PONTO.central.x1, z0: S.PONTO.central.z0, z1: S.PONTO.central.z1 }, '#5FAE9D');
-      ret({ x0: 37.4, x1: 41.4, z0: 9.5, z1: 12.1 }, '#9D95D8');
+      ret({ x0: 37.4, x1: 41.4, z0: 11.5, z1: 14.1 }, '#9D95D8');
       ret({ x0: S.PONTO.mesa.x0, x1: S.PONTO.mesa.x1, z0: S.PONTO.mesa.z0, z1: S.PONTO.mesa.z1 }, '#E6B48C');
       ctx.strokeStyle = '#F7941D';
       ctx.lineWidth = 3;
       ctx.strokeRect(X(M.ponto.x0 + 0.5), Z(M.ponto.z0 + 0.5), (M.ponto.x1 - M.ponto.x0 - 1) * ESC, (M.ponto.z1 - M.ponto.z0 - 1) * ESC);
       texto('📶 PONTO DE INTERNET', 41, 5.6, '#FFD36B', 'bold 12px Arial');
       texto('COMUNITÁRIO', 41, 7.4, '#FFD36B', 'bold 12px Arial');
-      texto('banco', 39.4, 13.2, '#FFFFFF', 'bold 9px Arial');
-      texto('central', 44.8, 14.0, '#FFFFFF', 'bold 9px Arial');
+      texto('banco', 39.4, 15.2, '#FFFFFF', 'bold 9px Arial');
+      texto('central', 44.8, 16.0, '#FFFFFF', 'bold 9px Arial');
       // Escola.
       ret({ x0: 48, x1: 52, z0: -36, z1: 36 }, '#E8ECF1');
       texto('EETI', 50, -12, '#0B4F9C', 'bold 13px Arial');
@@ -5611,6 +5628,42 @@
       est.cam = { dePos: S.camera.position.clone(), deAlvo: est.alvoAtual.clone(), paraPos: pos, paraAlvo: alvo, t: 0, dur: dur };
     }
 
+    // Se algum objeto ficar entre a câmera da cena e o que ela mostra, ele some
+    // até a cena acabar (a câmera "vê por dentro").
+    var rayCena = null;
+    var ocultos = [];
+    var quadroCena = 0;
+    function mostrarOcultos() {
+      ocultos.forEach(function (m) { m.visible = true; });
+      ocultos = [];
+    }
+    function cortarFrente() {
+      var a = S.area;
+      if (!a || !est || !est.alvoAtual) return;
+      if (quadroCena++ % 2) return;
+      if (!a.malhasCena) {
+        a.malhasCena = [];
+        a.grupo.traverse(function (o) {
+          if (o.isMesh && !o.isInstancedMesh) a.malhasCena.push(o);
+        });
+      }
+      if (!rayCena) rayCena = new THREE.Raycaster();
+      var origem = S.camera.position;
+      var dir = est.alvoAtual.clone().sub(origem);
+      var dist = dir.length();
+      mostrarOcultos();
+      if (dist < 0.9) return;
+      dir.normalize();
+      rayCena.set(origem, dir);
+      rayCena.far = dist - 0.6;
+      rayCena.intersectObjects(a.malhasCena, false).forEach(function (h) {
+        if (h.object.visible) {
+          h.object.visible = false;
+          ocultos.push(h.object);
+        }
+      });
+    }
+
     function atualizarCamera(dt) {
       var c = est.cam;
       if (!c) return;
@@ -5622,6 +5675,7 @@
         S.camera.position.x += Math.min(c.t - c.dur, 6) * 0.02;
       }
       S.camera.lookAt(est.alvoAtual);
+      cortarFrente();
     }
 
     function montarUi(titulo) {
@@ -5746,6 +5800,7 @@
 
     function concluir() {
       var cfg = est.cfg;
+      mostrarOcultos();
       est.ui.camada.remove();
       est = null;
       S.atualizarCena = null;

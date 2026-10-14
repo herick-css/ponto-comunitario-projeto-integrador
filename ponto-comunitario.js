@@ -6,7 +6,7 @@
   /* Ponto de Internet Comunitário · Residencial Ataliba — simulação 3D (Three.js, visual PS1/PS2) */
 
   var S = window.__PONTO = {
-    versao: '2.1.2',
+    versao: '2.1.3',
     marcas: [],
     erros: [],
     fase: 'inicio', // inicio → comandos → carregando → cena → jogo → fim
@@ -3229,6 +3229,19 @@
       S.caixa(0.98, 0.1, 1.2, S.mat(0x3fa06a), bx, 0.47, bz + 0.35, null, true);
       S.caixa(0.6, 0.12, 0.35, S.mat(0xffffff), bx, 0.52, bz - 0.72, null, true);
       S.colisorRet(bx - 0.5, bx + 0.5, bz - 1.0, bz + 1.0);
+      // Bolsa deitada em cima da cama (para levar o notebook e o cabo).
+      var bolsa = S.criarBolsa(null);
+      bolsa.position.set(bx - 0.1, 0.6, bz - 0.15);
+      bolsa.rotation.set(Math.PI / 2, 0, 0.5);
+      S.adicionar(bolsa);
+      A.bolsa = bolsa;
+      var malhasBolsa = [];
+      bolsa.traverse(function (o) { if (o.isMesh) malhasBolsa.push(o); });
+      S.interativo(malhasBolsa, {
+        id: 'bolsa',
+        nome: 'Sua bolsa',
+        ancora: new THREE.Vector3(bx - 0.95, 0, bz - 0.15)
+      });
       var gx = ox + L2 - 0.35;
       var gz = oz + P2 - 0.9;
       S.caixa(0.6, 2.0, 1.3, S.mat(0xc9b08a), gx, 1.0, gz);
@@ -3533,6 +3546,8 @@
       CI.tomadaTv = { pos: [ox + 0.6, 1.9, dz + 1.6], alvo: [ox + L2, 1.8, dz] };
       // Zoom na TV: a tela das câmeras ocupa a imagem toda.
       CI.tomadaTvZoom = { pos: [ox + L2 - 1.55, 1.85, dz], alvo: [ox + L2, 1.85, dz] };
+      // Lugar ao lado da TV, para o personagem não tampar a vista das câmeras.
+      CI.ladoTv = { x: ox + L2 - 1.4, z: dz + 1.45 };
       PT.desenharRack();
     };
 
@@ -3841,7 +3856,9 @@
       S.interativo([portaApto], {
         id: 'portaAptoEscada',
         nome: 'Porta do seu apartamento',
-        ancora: new THREE.Vector3(X(px), 0, Z(ZF + 0.8))
+        ancora: new THREE.Vector3(X(px), 0, Z(ZF + 0.8)),
+        // Só dá para entrar em casa estando lá em cima, na frente da porta.
+        disponivel: function () { return S.personagem.raiz.position.y > H2 - 0.5; }
       });
       ES.saidaApto = { x: X(px), z: Z(ZF + 0.75), angulo: 0 };
       // Lâmpadas de parede.
@@ -3882,7 +3899,8 @@
       S.interativo([folha], {
         id: 'portaSaidaPredio',
         nome: 'Porta do prédio (saída)',
-        ancora: new THREE.Vector3(X((porta0 + porta1) / 2), 0, Z(ZP - 0.75))
+        ancora: new THREE.Vector3(X((porta0 + porta1) / 2), 0, Z(ZP - 0.75)),
+        disponivel: function () { return S.personagem.raiz.position.y < 0.6; }
       });
       ES.porta.mat = folha.material; // o material foi clonado pelo interativo
       ES.entradaRua = { x: X((porta0 + porta1) / 2), z: Z(ZP - 0.8), angulo: Math.PI };
@@ -3923,15 +3941,17 @@
         ctx.fillStyle = pele;
         ctx.fillRect(0, 0, 16, 16);
         ctx.fillStyle = '#16120F';
-        ctx.fillRect(feminino ? 4 : 3, 5, feminino ? 3 : 4, 1);
-        ctx.fillRect(9, 5, feminino ? 3 : 4, 1);
+        if (!oculos) {
+          ctx.fillRect(feminino ? 4 : 3, 5, feminino ? 3 : 4, 1);
+          ctx.fillRect(9, 5, feminino ? 3 : 4, 1);
+        }
         ctx.fillRect(4, 7, 2, 2);
         ctx.fillRect(10, 7, 2, 2);
         if (oculos) {
-          ctx.fillStyle = 'rgba(40,40,40,0.9)';
+          // Sobrancelhas grisalhas (só a linha cinza, sem a preta por baixo).
+          ctx.fillStyle = '#6F6B66';
           ctx.fillRect(3, 6, 4, 1);
           ctx.fillRect(9, 6, 4, 1);
-          ctx.fillRect(7, 6, 2, 1);
         }
         ctx.fillStyle = 'rgba(0,0,0,0.22)';
         ctx.fillRect(7, 9, 2, 2);
@@ -4148,12 +4168,32 @@
     };
 
     // Conversa: o jogador vai para um lugar fixo na frente dela, a 1,9 m.
+    // Antes da conversa, o personagem anda até o lugar fixo na frente dela.
     V.conversar = function () {
+      var n = V.npc;
+      var L = V.LUGAR_CONVERSA;
+      var pp = S.personagem.raiz.position;
+      var fx = Math.sin(POS.angulo);
+      var fz = Math.cos(POS.angulo);
+      var lx = -fz;
+      var lz = fx;
+      var rx = pp.x - POS.x;
+      var rz = pp.z - POS.z;
+      var pontos = [];
+      // Vindo de trás ou do lado dela: contorna primeiro, sem passar por cima.
+      if (rx * fx + rz * fz < 1.2) {
+        var lado = rx * lx + rz * lz >= 0 ? 1 : -1;
+        pontos.push([POS.x + fx * 1.0 + lx * lado * 1.3, POS.z + fz * 1.0 + lz * lado * 1.3]);
+      }
+      pontos.push([L.x, L.z]);
+      n.raiz.rotation.y = POS.angulo;
+      S.andarAte(pontos, POS.angulo + Math.PI, iniciarConversa);
+    };
+
+    function iniciarConversa() {
       var E = S.estado;
       var n = V.npc;
       var p = S.personagem;
-      var L = V.LUGAR_CONVERSA;
-      S.posicionarPersonagem(L.x, L.z, POS.angulo + Math.PI);
       n.raiz.rotation.y = POS.angulo;
       var pp = p.raiz.position;
       var np = n.raiz.position;
@@ -4540,6 +4580,17 @@
       rolo.visible = false;
       bD.piv.add(rolo);
 
+      // Bolsa (mochila) nas costas: aparece depois que o personagem pega na cama.
+      var bolsa = S.criarBolsa(corpo);
+      bolsa.position.set(0, 1.03, -0.27);
+      bolsa.visible = false;
+      // Alças na frente dos ombros.
+      var mAlca = S.mat(0x1b2740);
+      [-0.17, 0.17].forEach(function (x) {
+        var alca = S.caixa(0.07, 0.5, 0.03, mAlca, x, 0.02, 0.44, bolsa, true);
+        alca.rotation.x = 0.05;
+      });
+
       var etiqueta = new THREE.Sprite(new THREE.SpriteMaterial({ map: texturaNome(nome), depthTest: false, transparent: true }));
       etiqueta.scale.set(1.3, 0.2, 1);
       etiqueta.position.set(0, 2.32, 0);
@@ -4556,6 +4607,7 @@
         maoD: bD.mao,
         nbMao: nbMao,
         rolo: rolo,
+        bolsa: bolsa,
         etiqueta: etiqueta,
         fase: 0,
         angulo: Math.PI,
@@ -4565,11 +4617,26 @@
       };
     };
 
-    S.personagemCarregando = function (notebook, cabo) {
+    S.personagemCarregando = function (notebook, cabo, bolsa) {
       var p = S.personagem;
       if (!p) return;
       p.nbMao.visible = !!notebook;
       p.rolo.visible = !!cabo;
+      p.bolsa.visible = !!bolsa;
+    };
+
+    // Mochila low poly (usada nas costas do personagem e em cima da cama).
+    S.criarBolsa = function (pai) {
+      var g = new THREE.Group();
+      if (pai) pai.add(g);
+      var mBolsa = S.mat(0x24324f);
+      var mFrente = S.mat(0x2d3f63);
+      S.caixa(0.46, 0.52, 0.2, mBolsa, 0, 0, 0, g);
+      S.caixa(0.36, 0.24, 0.07, mFrente, 0, -0.1, -0.13, g, true); // bolso
+      S.caixa(0.36, 0.04, 0.075, S.mat(0xf7941d), 0, 0.03, -0.13, g, true); // faixa laranja
+      S.caixa(0.4, 0.08, 0.16, mFrente, 0, 0.29, 0, g, true); // tampa
+      S.caixa(0.14, 0.05, 0.04, S.mat(0x1b2740), 0, 0.35, 0, g, true); // alça de mão
+      return g;
     };
 
     S.posicionarPersonagem = function (x, z, angulo) {
@@ -4614,6 +4681,51 @@
       return S.CFG.velocidade;
     };
 
+    // Anda sozinho até um ponto fixo (antes de uma cena), sem teleporte.
+    // pontos: [[x, z], ...] (o último é o destino); angulo: para onde olhar ao chegar.
+    S.andarAte = function (pontos, angulo, aoChegar) {
+      var p = S.personagem;
+      if (p.sentado) S.jogo.levantar();
+      S.teclas = {};
+      S.joy.x = 0;
+      S.joy.z = 0;
+      S.autoAndar = { pontos: pontos.slice(), angulo: angulo, aoChegar: aoChegar, preso: 0, tempo: 0, melhor: Infinity };
+    };
+
+    // Direção do andar automático; null quando já chegou e só falta virar.
+    function direcaoAuto(dt) {
+      var a = S.autoAndar;
+      var p = S.personagem;
+      var pos = p.raiz.position;
+      a.tempo += dt;
+      while (a.pontos.length) {
+        var alvo = a.pontos[0];
+        var dx = alvo[0] - pos.x;
+        var dz = alvo[1] - pos.z;
+        var d = Math.sqrt(dx * dx + dz * dz);
+        var passo = S.velocidadeAtual() * dt;
+        if (d <= Math.max(0.04, passo)) {
+          pos.x = alvo[0];
+          pos.z = alvo[1];
+          a.pontos.shift();
+          a.melhor = Infinity;
+          a.preso = 0;
+          continue;
+        }
+        // Travou num obstáculo: escorrega até o ponto para não ficar preso.
+        if (d < a.melhor - 0.02) {
+          a.melhor = d;
+          a.preso = 0;
+        } else {
+          a.preso += dt;
+        }
+        // Perto do ponto, reduz o passo para não passar dele.
+        var f = Math.min(1, d / Math.max(passo, 0.0001));
+        return { x: dx / d * f, z: dz / d * f, forcado: a.preso > 0.45 || a.tempo > 8 };
+      }
+      return null;
+    }
+
     S.atualizarMovimento = function (dt) {
       var p = S.personagem;
       var t = S.teclas;
@@ -4623,10 +4735,34 @@
       if (t.s || t.arrowdown) dz += 1;
       if (t.a || t.arrowleft) dx -= 1;
       if (t.d || t.arrowright) dx += 1;
+      var semColisao = false;
+      if (S.autoAndar) {
+        var aut = direcaoAuto(dt);
+        if (aut) {
+          dx = aut.x;
+          dz = aut.z;
+          semColisao = aut.forcado; // travou num obstáculo: escorrega até o ponto
+        } else {
+          dx = 0;
+          dz = 0;
+          var a = S.autoAndar;
+          var dif = a.angulo === undefined ? 0 : S.difAngulo(p.angulo, a.angulo);
+          p.angulo += Math.max(-dt * 9, Math.min(dt * 9, dif));
+          p.raiz.rotation.y = p.angulo;
+          if (Math.abs(dif) < 0.05) {
+            if (a.angulo !== undefined) {
+              p.angulo = a.angulo;
+              p.raiz.rotation.y = a.angulo;
+            }
+            S.autoAndar = null;
+            if (a.aoChegar) S.protegido('andarAte', a.aoChegar)();
+          }
+        }
+      }
       var len = Math.sqrt(dx * dx + dz * dz);
       var intensidade = Math.min(1, len);
-      var quer = len > 0.15;
       if (p.sentado && quer && S.fase === 'jogo') S.jogo.levantar();
+      var quer = len > 0.15 || (S.autoAndar && len > 0.0001);
       p.andando = quer && !p.sentado;
       if (p.andando) {
         dx /= len;
@@ -4635,8 +4771,8 @@
         var pos = p.raiz.position;
         var nx = pos.x + dx * passo;
         var nz = pos.z + dz * passo;
-        if (livre(nx, pos.z)) pos.x = nx;
-        if (livre(pos.x, nz)) pos.z = nz;
+        if (semColisao || livre(nx, pos.z)) pos.x = nx;
+        if (semColisao || livre(pos.x, nz)) pos.z = nz;
         p.angulo += S.difAngulo(p.angulo, Math.atan2(dx, dz)) * Math.min(1, dt * 12);
         p.raiz.rotation.y = p.angulo;
         p.fase += dt * 10 * intensidade;
@@ -4948,6 +5084,7 @@
       tentouEnviar: false,
       pegouNotebook: false,
       pegouCabo: false,
+      pegouBolsa: false,
       chegouPonto: false,
       viuMapa: false,
       energia: false,
@@ -4985,18 +5122,20 @@
       {
         id: 'pegar',
         texto: function () {
+          if (!E.pegouBolsa) return 'Pegue a sua bolsa, em cima da cama, para levar as coisas até o ponto.';
           var n = (E.pegouNotebook ? 1 : 0) + (E.pegouCabo ? 1 : 0);
-          return 'Pegue o notebook e o seu cabo de rede (UTP) para levar ao ponto (' + n + '/2).';
+          return 'Guarde na bolsa o notebook e o seu cabo de rede (UTP) (' + n + '/2).';
         },
-        feita: function () { return E.pegouNotebook && E.pegouCabo; },
+        feita: function () { return E.pegouBolsa && E.pegouNotebook && E.pegouCabo; },
         alvos: function () {
+          if (!E.pegouBolsa) return ['bolsa'];
           var l = [];
           if (!E.pegouNotebook) l.push('notebook');
           if (!E.pegouCabo) l.push('cabo');
           return l;
         },
-        dica1: 'O cabo de rede azul está na estante, embaixo do roteador.',
-        dica2: 'Use o notebook (na mesa) e o cabo azul (na estante) para levar os dois.'
+        dica1: 'A bolsa está em cima da cama. Depois, guarde nela o notebook (na mesa) e o cabo azul (na estante).',
+        dica2: 'Use a bolsa na cama, depois o notebook na mesa e o cabo de rede azul na estante, embaixo do roteador.'
       },
       {
         id: 'ir',
@@ -5112,6 +5251,7 @@
 
     J.distancia = function (info) {
       var p = S.personagem.raiz.position;
+      if (info.disponivel && !info.disponivel()) return Infinity;
       var dx = info.ancora.x - p.x;
       var dz = info.ancora.z - p.z;
       return Math.sqrt(dx * dx + dz * dz);
@@ -5142,8 +5282,11 @@
       switch (info.id) {
         case 'notebook':
           if (!E.tentouEnviar) return 'Usar o notebook';
-          return 'Pegar o notebook';
-        case 'cabo': return E.tentouEnviar ? 'Pegar o cabo de rede' : 'Ver o cabo de rede';
+          return E.pegouBolsa ? 'Guardar o notebook na bolsa' : 'Pegar o notebook';
+        case 'cabo':
+          if (!E.tentouEnviar) return 'Ver o cabo de rede';
+          return E.pegouBolsa ? 'Guardar o cabo de rede na bolsa' : 'Pegar o cabo de rede';
+        case 'bolsa': return E.tentouEnviar ? 'Pegar a bolsa' : 'Ver a bolsa';
         case 'roteadorCasa': return 'Ver o roteador de casa';
         case 'portaApto': return 'Sair de casa';
         case 'portaAptoEscada': return 'Entrar em casa';
@@ -5190,10 +5333,11 @@
 
     J.definirMao = function () {
       var itens = [];
-      if (E.pegouNotebook && !E.conectadoCabo) itens.push('Notebook');
+      if (E.pegouNotebook && !E.conectadoCabo) itens.push('notebook');
       if (E.pegouCabo && !E.conectadoCabo) itens.push('cabo UTP');
-      S.ui.definirMao(itens.length ? itens.join(' + ') : null);
-      S.personagemCarregando(E.pegouNotebook && !E.conectadoCabo, E.pegouCabo && !E.conectadoCabo);
+      S.ui.definirMao(E.pegouBolsa ? 'Bolsa' + (itens.length ? ': ' + itens.join(' + ') : '') : null);
+      // Notebook e cabo vão dentro da bolsa (nas costas).
+      S.personagemCarregando(false, false, E.pegouBolsa);
     };
 
     // Rótulo do lugar onde o personagem está (canto do objetivo).
@@ -5223,7 +5367,7 @@
     var P = S.PONTO;
 
     J.usar = S.protegido('jogo:usar', function (info) {
-      if (S.fase !== 'jogo' || S.pausado) return;
+      if (S.fase !== 'jogo' || S.pausado || S.autoAndar) return;
       if (J.distancia(info) > (info.alcance || S.CFG.alcance)) {
         S.aviso('Chegue mais perto: ' + info.nome, 'info', 2000);
         return;
@@ -5237,6 +5381,18 @@
       if (acao) acao(info);
     });
 
+    function verTv() {
+      S.cenaCurta({
+        falas: [{
+          quem: 'aluno',
+          tomada: S.centralInt.tomadaTvZoom,
+          texto: E.energia
+            ? 'Imagens ao vivo das 4 câmeras: o banco, a entrada, a Rua D e os fundos da central.'
+            : 'A TV das câmeras está desligada: o ponto está sem energia.'
+        }]
+      });
+    }
+
     var ACOES = {
       notebook: function () {
         if (!E.tentouEnviar) {
@@ -5244,11 +5400,15 @@
           return;
         }
         if (!E.pegouNotebook) {
+          if (!E.pegouBolsa) {
+            S.aviso('Pegue primeiro a sua bolsa, em cima da cama, para guardar o notebook.', 'alerta', 3200);
+            return;
+          }
           E.pegouNotebook = true;
           S.apto.notebook.visible = false;
           S.removerInterativo('notebook', 'apto');
           J.definirMao();
-          S.aviso('Notebook desligado e guardado na mochila.', 'ok', 2400);
+          S.aviso('Notebook desligado e guardado na bolsa.', 'ok', 2400);
           J.atualizarMissoes();
         }
       },
@@ -5257,23 +5417,39 @@
           S.aviso('Seu cabo de rede (UTP), com conector RJ45 nas pontas. Por enquanto, a atividade vem primeiro.', 'info', 3600);
           return;
         }
+        if (!E.pegouBolsa) {
+          S.aviso('Pegue primeiro a sua bolsa, em cima da cama, para guardar o cabo.', 'alerta', 3200);
+          return;
+        }
         E.pegouCabo = true;
         S.apto.rolo.visible = false;
         S.removerInterativo('cabo', 'apto');
         J.definirMao();
-        S.aviso('Cabo de rede guardado. Ele vai ligar o notebook na tomada do ponto.', 'ok', 3000);
+        S.aviso('Cabo de rede guardado na bolsa. Ele vai ligar o notebook na tomada do ponto.', 'ok', 3000);
         J.atualizarMissoes();
       },
       roteadorCasa: function () {
         S.minigames.roteadorCasa();
+      },
+      bolsa: function () {
+        if (!E.tentouEnviar) {
+          S.aviso('Sua bolsa. Primeiro, tente enviar a atividade pelo notebook.', 'info', 3000);
+          return;
+        }
+        E.pegouBolsa = true;
+        S.apto.bolsa.visible = false;
+        S.removerInterativo('bolsa', 'apto');
+        J.definirMao();
+        S.aviso('Bolsa nas costas! Agora guarde nela o notebook e o cabo de rede.', 'ok', 3200);
+        J.atualizarMissoes();
       },
       portaApto: function () {
         if (!E.tentouEnviar) {
           S.aviso('Antes de sair, use o notebook para enviar a atividade.', 'alerta', 3000);
           return;
         }
-        if (!E.pegouNotebook || !E.pegouCabo) {
-          S.aviso('Pegue o notebook e o cabo de rede antes de sair.', 'alerta', 3000);
+        if (!E.pegouBolsa || !E.pegouNotebook || !E.pegouCabo) {
+          S.aviso('Pegue a bolsa e guarde nela o notebook e o cabo de rede antes de sair.', 'alerta', 3200);
           return;
         }
         var e = S.escada.saidaApto;
@@ -5323,16 +5499,9 @@
         S.falarDaEscola();
       },
       tv: function () {
-        // Zoom na tela da TV.
-        S.cenaCurta({
-          falas: [{
-            quem: 'aluno',
-            tomada: S.centralInt.tomadaTvZoom,
-            texto: E.energia
-              ? 'Imagens ao vivo das 4 câmeras: o banco, a entrada, a Rua D e os fundos da central.'
-              : 'A TV das câmeras está desligada: o ponto está sem energia.'
-          }]
-        });
+        // Anda para o lado da TV (sem tampar a tela) e dá zoom nas câmeras.
+        var L = S.centralInt.ladoTv;
+        S.andarAte([[L.x, L.z]], Math.PI / 2, verTv);
       },
       keystoneE: usarKeystone,
       keystoneD: usarKeystone,
@@ -5392,6 +5561,7 @@
     // ---- Troca de área (casa ↔ bairro) ------------------------------------
     J.trocarArea = function (id, x, z, angulo, texto, carregando) {
       S.fase = 'cena';
+      S.autoAndar = null;
       S.teclas = {};
       S.joy.x = 0;
       S.joy.z = 0;
@@ -6888,7 +7058,7 @@
         falas: [
           { quem: 'pensando', tomada: S.tomadaRosto(1.5, 1), texto: 'Poxa, minha internet não está funcionando... O que eu faço agora...?' },
           { quem: 'pensando', tomada: S.tomadaRosto(1.3, -1, 0.1), gesto: true, texto: 'Ah, já sei! Tem um ponto de internet comunitário aqui perto, feito pelos alunos da EETI em parceria com o Senac, com internet via satélite!' },
-          { quem: 'aluno', tomada: { pos: [O.ox - 0.8, 2.3, O.oz + 1.6], alvo: [O.ox - 2.8, 0.8, O.oz - 0.9] }, texto: 'Vou levar o meu notebook e o meu cabo de rede.' }
+          { quem: 'aluno', tomada: { pos: [O.ox - 0.8, 2.3, O.oz + 1.6], alvo: [O.ox - 2.8, 0.8, O.oz - 0.9] }, texto: 'Vou pegar a minha bolsa e levar o notebook e o cabo de rede.' }
         ],
         aoFim: function () {
           E.tentouEnviar = true;

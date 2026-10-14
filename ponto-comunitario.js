@@ -6,7 +6,7 @@
   /* Ponto de Internet Comunitário · Residencial Ataliba — simulação 3D (Three.js, visual PS1/PS2) */
 
   var S = window.__PONTO = {
-    versao: '2.1.3',
+    versao: '2.1.4',
     marcas: [],
     erros: [],
     fase: 'inicio', // inicio → comandos → carregando → cena → jogo → fim
@@ -48,6 +48,10 @@
   };
 
   window.addEventListener('error', function (ev) {
+    // Ignora erros de extensões do navegador e da página hospedeira (ex.: onMessage).
+    var origem = (ev.filename || '') + ' ' + ((ev.error && ev.error.stack) || '');
+    var msg = String(ev.message || (ev.error && ev.error.message) || '');
+    if (/extension:\/\//.test(origem) || /onMessage|chrome\.runtime|ResizeObserver loop/.test(msg)) return;
     registrarErro('global', ev.error || ev.message);
   });
 
@@ -2046,7 +2050,9 @@
       // Ruas.
       var mAsf = S.matTex(T.asfalto(1, 1));
       M.ruas.forEach(function (r) {
-        var m = S.chao(r.x0, r.x1, r.z0, r.z1, 0.012, mAsf.clone());
+        // Ruas no sentido norte-sul ficam 4 mm acima: no cruzamento uma cobre a outra sem piscar.
+        var vertical = (r.z1 - r.z0) > (r.x1 - r.x0);
+        var m = S.chao(r.x0, r.x1, r.z0, r.z1, vertical ? 0.016 : 0.012, mAsf.clone());
         m.material.map = T.asfalto((r.x1 - r.x0) / 4, (r.z1 - r.z0) / 4);
       });
       // Bueiros.
@@ -3043,10 +3049,10 @@
       B.lixeira(-3.9, 18.9);
       S.vizinha.montar();
       // Motos e bicicletas encostadas fora da rua (os carros agora andam).
-      B.moto(34.9, 18.2, Math.PI / 2, 0xe3b21a);
+      B.moto(34.75, 21.55, Math.PI / 2 + 0.15, 0xe3b21a); // encostada no coqueiro
       B.bicicleta(-3.8, 20.6, Math.PI / 2, 0x2f6fc0);
       B.bicicleta(3.75, 9.0, Math.PI / 2, 0xc8202a);
-      B.bicicleta(35.7, 15.9, Math.PI / 2, 0x3fa06a);
+      B.bicicleta(35.7, 15.5, Math.PI / 2, 0x3fa06a);
       S.transito.montar();
       S.montarConversas();
     };
@@ -4761,8 +4767,8 @@
       }
       var len = Math.sqrt(dx * dx + dz * dz);
       var intensidade = Math.min(1, len);
-      if (p.sentado && quer && S.fase === 'jogo') S.jogo.levantar();
       var quer = len > 0.15 || (S.autoAndar && len > 0.0001);
+      if (p.sentado && quer && S.fase === 'jogo') S.jogo.levantar();
       p.andando = quer && !p.sentado;
       if (p.andando) {
         dx /= len;
@@ -6741,10 +6747,9 @@
       mundoAntigo(dt);
       if (!S.area || !S.personagem) return;
       if (S.area.id === 'bairro' || S.area.id === 'central') S.transito.atualizar(dt);
-      if (S.area.id === 'bairro') {
-        S.atualizarConversas(dt);
-        verificarMuro();
-      }
+      // As conversas continuam na central: aparecem nas câmeras da TV.
+      if (S.area.id === 'bairro' || S.area.id === 'central') S.atualizarConversas(dt);
+      if (S.area.id === 'bairro') verificarMuro();
       atualizarEscuro();
       atualizarBalao();
     };
@@ -6830,10 +6835,10 @@
       var dir = est.alvoAtual.clone().sub(origem);
       var dist = dir.length();
       mostrarOcultos();
-      if (dist < 0.9) return;
+      if (dist < 1.8) return;
       dir.normalize();
       rayCena.set(origem, dir);
-      rayCena.far = dist - 0.6;
+      rayCena.far = dist - 1.3; // o que está colado no personagem (banco, mesa) fica visível
       rayCena.intersectObjects(a.malhasCena, false).forEach(function (h) {
         if (h.object.visible) {
           h.object.visible = false;

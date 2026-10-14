@@ -2909,12 +2909,12 @@
       // Porta do seu apartamento (Bloco 19, térreo).
       var casa = S.CASA;
       var porta = S.caixa(0.8, 1.95, 0.06, S.mat(0x5e7f86), casa.porta.x, 0.975, casa.porta.z + 0.03);
-      var tex = S.tex.texto(32, 12, '19-' + casa.apto, { fundo: '#F1F0EC', cor: '#3B4C66', fonte: 'bold 8px Arial' });
+      var tex = S.tex.texto(32, 12, 'BL 19', { fundo: '#F1F0EC', cor: '#3B4C66', fonte: 'bold 8px Arial' });
       S.plano(0.3, 0.12, new THREE.MeshLambertMaterial({ map: tex }), casa.porta.x + 0.65, 1.7, casa.porta.z + 0.012);
       S.chao(casa.porta.x - 0.5, casa.porta.x + 0.5, casa.porta.z + 0.06, casa.porta.z + 0.6, 0.03, S.mat(0x8a6a4a));
       S.interativo([porta], {
         id: 'portaCasa',
-        nome: 'Porta da sua casa (Bloco 19, apto ' + casa.apto + ')',
+        nome: 'Entrada do seu prédio (Bloco 19)',
         ancora: new THREE.Vector3(casa.porta.x, 0, casa.porta.z + 0.9)
       });
       // Placas de rua (ajudam a seguir o mapa).
@@ -2931,7 +2931,8 @@
       B.arvore(36.0, -14.0, 0.9);
       B.arvore(46.5, 21.0, 1.0);
       B.arvore(37.0, 23.5, 0.8);
-      B.lixeira(-3.9, 18.6);
+      B.lixeira(-3.9, 18.9);
+      S.vizinha.montar();
       // Carros e motos parados no canto da rua.
       B.carro(-18, 30.0, 0, 0xc8202a);
       B.carro(14, -2.1, Math.PI, 0xe9e9ea);
@@ -3542,6 +3543,442 @@
   });
 
 
+  /* ---- 47-escada.js ---- */
+
+  /* ================================================================== */
+  secao('W11-escadaria', function () {
+    // Escadaria do Bloco 19: o apartamento fica no 2º andar. Dois lances de escada
+    // (em "U"), cada um com a sua câmera fixa, e a porta do prédio no fim.
+    var ES = S.escada = {};
+    var T = S.tex;
+    var O = S.ESCADA = { ox: 900, oz: 0 };
+
+    // Planta (coordenadas locais; somar O.ox / O.oz).
+    var X0 = -2.6;
+    var XL = -0.8; // onde começam os lances
+    var XP = 2.0; // onde começa o patamar
+    var X1 = 3.0;
+    var ZF = -3.2; // parede do fundo
+    var ZD = -1.65; // divisória entre as duas faixas
+    var ZB = -0.1; // borda da frente do 2º lance
+    var ZP = 2.4; // parede da frente (com a porta do prédio)
+    var H2 = 2.8; // altura do 2º andar
+    var HP = 1.4; // altura do patamar
+
+    // Altura do chão em cada ponto (a escada é uma rampa para o personagem).
+    ES.altura = function (x, z) {
+      var lx = x - O.ox;
+      var lz = z - O.oz;
+      if (lx >= XP) return HP;
+      var fundo = lz < ZD;
+      if (lx <= XL) return fundo ? H2 : 0;
+      var t = Math.max(0, Math.min(1, (lx - XL) / (XP - XL)));
+      return fundo ? H2 - t * (H2 - HP) : t * HP;
+    };
+
+    // Câmera 1 no andar de cima, câmera 2 no térreo. No patamar mantém a atual.
+    ES.cameraAtual = 1;
+    ES.escolherCamera = function (x, z) {
+      var lx = x - O.ox;
+      var lz = z - O.oz;
+      if (lx < XP) ES.cameraAtual = lz < ZD ? 1 : 2;
+      return ES.cameraAtual;
+    };
+    ES.cameras = {
+      1: { pos: [0.4, 5.9, 3.0], alvo: [0.3, 2.1, -2.4] },
+      2: { pos: [-0.3, 3.5, 6.4], alvo: [-0.4, 0.6, -0.4] }
+    };
+    ES.poseCamera = function (pos, saidaPos, saidaAlvo) {
+      var c = ES.cameras[ES.escolherCamera(pos.x, pos.z)];
+      saidaPos.set(O.ox + c.pos[0], c.pos[1], O.oz + c.pos[2]);
+      saidaAlvo.set(O.ox + c.alvo[0], c.alvo[1], O.oz + c.alvo[2]);
+      return ES.cameraAtual;
+    };
+
+    ES.montar = function () {
+      var ox = O.ox;
+      var oz = O.oz;
+      function X(x) { return ox + x; }
+      function Z(z) { return oz + z; }
+      function bloco(x0, x1, z0, z1, y0, y1, mat) {
+        return S.caixa(x1 - x0, y1 - y0, z1 - z0, mat, X((x0 + x1) / 2), (y0 + y1) / 2, Z((z0 + z1) / 2));
+      }
+
+      // Tudo fora da escadaria é preto.
+      S.chao(ox - 40, ox + 40, oz - 40, oz + 40, -0.02, new THREE.MeshBasicMaterial({ color: 0x000000 }));
+      // Piso do térreo (cimento queimado).
+      var texPiso = S.textura(16, 16, function (ctx, w, h) {
+        ctx.fillStyle = '#A9A69E';
+        ctx.fillRect(0, 0, w, h);
+        T.ruido(ctx, w, h, ['#9C998F', '#B6B3AA', '#8F8C83'], 40, S.rng(91));
+      }, [2, 3]);
+      S.chao(X(X0), X(XL), Z(ZD), Z(ZP), 0, S.matTex(texPiso));
+
+      // Paredes pintadas (bege com barrado sujo, como os blocos).
+      var texParede = S.textura(32, 32, function (ctx, w, h) {
+        ctx.fillStyle = '#E2D7C3';
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = '#C9BCA4';
+        ctx.fillRect(0, h - 8, w, 8);
+        T.ruido(ctx, w, h, ['rgba(90,80,60,0.12)', 'rgba(0,0,0,0.06)'], 60, S.rng(92));
+        for (var x = 0; x < w; x += 5) {
+          ctx.fillStyle = 'rgba(80,70,50,0.12)';
+          ctx.fillRect(x, h - 10, 1, 6);
+        }
+      });
+      function parede(l, a, p, x, y, z, rep) {
+        var t = texParede.clone();
+        t.wrapS = THREE.RepeatWrapping;
+        t.wrapT = THREE.RepeatWrapping;
+        t.repeat.set(rep[0], rep[1]);
+        t.needsUpdate = true;
+        return S.caixa(l, a, p, S.matTex(t), x, y, z);
+      }
+      var HT = H2 + 2.9;
+      parede(X1 - X0 + 0.24, HT, 0.12, X((X0 + X1) / 2), HT / 2, Z(ZF - 0.06), [3, 2]);
+      parede(0.12, HT, ZP - ZF, X(X0 - 0.06), HT / 2, Z((ZF + ZP) / 2), [3, 2]);
+      parede(0.12, HT, ZB - ZF, X(X1 + 0.06), HT / 2, Z((ZF + ZB) / 2), [2, 2]);
+      // Parede lateral do hall (fica baixa para a câmera do térreo enxergar).
+      parede(0.12, 1.0, ZP - ZB, X(XL + 0.06), 0.5, Z((ZB + ZP) / 2), [1.5, 0.4]);
+
+      // Blocos de alvenaria: corredor do 2º andar, patamar e degraus.
+      var mTopo = S.mat(0xb7b3aa);
+      var mLado = S.matTex(texParede);
+      function macico(x0, x1, z0, z1, y1) {
+        var m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1, z1 - z0), [mLado, mLado, mTopo, mTopo, mLado, mLado]);
+        m.position.set(X((x0 + x1) / 2), y1 / 2, Z((z0 + z1) / 2));
+        m.castShadow = true;
+        m.receiveShadow = true;
+        S.adicionar(m);
+        return m;
+      }
+      macico(X0, XL, ZF, ZD, H2);
+      macico(XP, X1, ZF, ZB, HP);
+      var mDegrau = S.mat(0x3f6fb3);
+      var mEspelho = S.mat(0xe4e0d6);
+      var passos = 8;
+      var run = (XP - XL) / passos;
+      var subida = (H2 - HP) / passos;
+      for (var i = 0; i < passos; i++) {
+        // 1º lance (faixa do fundo): desce do 2º andar até o patamar.
+        var topo1 = H2 - subida * (i + 1);
+        var d1 = new THREE.Mesh(new THREE.BoxGeometry(run, topo1, ZD - ZF), [mEspelho, mEspelho, mDegrau, mEspelho, mEspelho, mEspelho]);
+        d1.position.set(X(XL + run * (i + 0.5)), topo1 / 2, Z((ZF + ZD) / 2));
+        d1.castShadow = true;
+        d1.receiveShadow = true;
+        S.adicionar(d1);
+        // 2º lance (faixa da frente): desce do patamar até o térreo.
+        var topo2 = HP - subida * (i + 1);
+        if (topo2 > 0.01) {
+          var d2 = new THREE.Mesh(new THREE.BoxGeometry(run, topo2, ZB - ZD), [mEspelho, mEspelho, mDegrau, mEspelho, mEspelho, mEspelho]);
+          d2.position.set(X(XP - run * (i + 0.5)), topo2 / 2, Z((ZD + ZB) / 2));
+          d2.castShadow = true;
+          d2.receiveShadow = true;
+          S.adicionar(d2);
+        }
+      }
+
+      // Corrimãos (grade de ferro).
+      var mFerro = S.mat(0x2c3a4f);
+      function corrimao(xa, ya, xb, yb, z) {
+        var dx = xb - xa;
+        var dy = yb - ya;
+        var comp = Math.sqrt(dx * dx + dy * dy);
+        var r = S.caixa(comp, 0.05, 0.05, mFerro, X((xa + xb) / 2), (ya + yb) / 2 + 0.95, Z(z), null, true);
+        r.rotation.z = Math.atan2(dy, dx);
+        var n = Math.max(2, Math.round(Math.abs(dx) / 0.5));
+        for (var k = 0; k <= n; k++) {
+          var t = k / n;
+          S.caixa(0.03, 0.95, 0.03, mFerro, X(xa + dx * t), ya + dy * t + 0.475, Z(z), null, true);
+        }
+      }
+      corrimao(X0 + 0.1, H2, XL, H2, ZD); // borda do corredor de cima
+      corrimao(XL, H2, XP, HP, ZD); // 1º lance
+      corrimao(XP, HP, XL, 0, ZB); // 2º lance
+      corrimao(XP, HP, X1 - 0.05, HP, ZB); // borda do patamar
+
+      // Colisões: paredes, divisória entre os lances, frente e região sem chão.
+      S.colisorRet(X(X0 - 1), X(X1 + 1), Z(ZF - 1), Z(ZF));
+      S.colisorRet(X(X0 - 1), X(X0), Z(ZF - 1), Z(ZP + 1));
+      S.colisorRet(X(X1), X(X1 + 1), Z(ZF - 1), Z(ZP + 1));
+      S.colisorRet(X(X0 - 1), X(X1 + 1), Z(ZP), Z(ZP + 1));
+      S.colisorRet(X(X0), X(XP), Z(ZD - 0.05), Z(ZD + 0.05));
+      S.colisorRet(X(XL), X(X1 + 1), Z(ZB), Z(ZP + 1));
+
+      // ---- 2º andar: porta do apartamento, capacho, vaso e lâmpada ----
+      var px = -1.7;
+      var portaApto = S.caixa(0.9, 2.05, 0.06, S.mat(0x5e7f86), X(px), H2 + 1.025, Z(ZF + 0.03));
+      S.caixa(0.08, 0.05, 0.12, S.mat(S.COR.metal), X(px + 0.32), H2 + 1.0, Z(ZF + 0.09), null, true);
+      var texNum = T.texto(32, 12, '19-' + S.CASA.apto, { fundo: '#F1F0EC', cor: '#3B4C66', fonte: 'bold 8px Arial' });
+      S.plano(0.3, 0.12, S.matTex(texNum), X(px + 0.7), H2 + 1.75, Z(ZF + 0.005));
+      S.caixa(0.8, 0.02, 0.45, S.mat(0x8a5a3a), X(px), H2 + 0.01, Z(ZF + 0.4), null, true);
+      S.cilindro(0.16, 0.12, 0.32, 8, S.mat(0xb8574a), X(X0 + 0.3), H2 + 0.16, Z(ZF + 0.3));
+      var planta = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), S.mat(0x3fa06a));
+      planta.position.set(X(X0 + 0.3), H2 + 0.55, Z(ZF + 0.3));
+      S.adicionar(planta);
+      S.colisor(X(X0 + 0.3), Z(ZF + 0.3), 0.35, 0.35);
+      S.interativo([portaApto], {
+        id: 'portaAptoEscada',
+        nome: 'Porta do seu apartamento',
+        ancora: new THREE.Vector3(X(px), 0, Z(ZF + 0.8))
+      });
+      ES.saidaApto = { x: X(px), z: Z(ZF + 0.75), angulo: 0 };
+      // Lâmpadas de parede.
+      var mLuz = S.matUnico(0xfff3cf, { emissive: 0xfff3cf, emissiveIntensity: 0.6 });
+      S.caixa(0.3, 0.12, 0.08, mLuz, X(0.6), H2 + 2.3, Z(ZF + 0.05), null, true);
+      S.caixa(0.08, 0.12, 0.3, mLuz, X(X0 + 0.05), 2.3, Z(0.8), null, true);
+
+      // ---- Térreo: caixas de correio e a porta do prédio (de frente para a câmera) ----
+      var texCorreio = S.textura(32, 16, function (ctx, w, h) {
+        ctx.fillStyle = '#7D868F';
+        ctx.fillRect(0, 0, w, h);
+        for (var c = 0; c < 4; c++) {
+          for (var r = 0; r < 2; r++) {
+            ctx.fillStyle = '#5E666E';
+            ctx.fillRect(1 + c * 8, 1 + r * 8, 6, 6);
+            ctx.fillStyle = '#C9CED3';
+            ctx.fillRect(2 + c * 8, 2 + r * 8, 4, 1);
+          }
+        }
+      });
+      S.plano(1.0, 0.5, S.matTex(texCorreio), X(-1.7), 1.3, Z(ZD + 0.01));
+
+      var porta0 = -2.15;
+      var porta1 = -1.25;
+      var mBatente = S.mat(0x2c3a4f);
+      S.caixa(0.08, 2.15, 0.12, mBatente, X(porta0 - 0.04), 1.075, Z(ZP));
+      S.caixa(0.08, 2.15, 0.12, mBatente, X(porta1 + 0.04), 1.075, Z(ZP));
+      S.caixa(porta1 - porta0 + 0.16, 0.1, 0.12, mBatente, X((porta0 + porta1) / 2), 2.15, Z(ZP));
+      // Mureta da frente (baixa, como uma maquete) dos dois lados da porta.
+      S.caixa(porta0 - X0, 0.5, 0.12, S.mat(0xc9bca4), X((X0 + porta0) / 2), 0.25, Z(ZP));
+      S.caixa(XL - porta1, 0.5, 0.12, S.mat(0xc9bca4), X((porta1 + XL) / 2), 0.25, Z(ZP));
+      // Porta de grade com chapa (fica meio transparente quando o jogador chega perto).
+      var mPorta = S.matUnico(0x3b5f8a);
+      var folha = S.caixa(porta1 - porta0, 2.05, 0.05, mPorta, X((porta0 + porta1) / 2), 1.025, Z(ZP));
+      var mGrade = new THREE.MeshLambertMaterial({ map: T.grade(3, 2, '#22344A'), alphaTest: 0.5, side: THREE.DoubleSide, transparent: false });
+      var grade = S.plano(porta1 - porta0 - 0.1, 0.9, mGrade, X((porta0 + porta1) / 2), 1.5, Z(ZP + 0.03));
+      ES.porta = { malhas: [folha, grade], mat: mPorta, matGrade: mGrade, opacidade: 1, x: X((porta0 + porta1) / 2), z: Z(ZP) };
+      S.interativo([folha], {
+        id: 'portaSaidaPredio',
+        nome: 'Porta do prédio (saída)',
+        ancora: new THREE.Vector3(X((porta0 + porta1) / 2), 0, Z(ZP - 0.75))
+      });
+      ES.porta.mat = folha.material; // o material foi clonado pelo interativo
+      ES.entradaRua = { x: X((porta0 + porta1) / 2), z: Z(ZP - 0.8), angulo: Math.PI };
+    };
+
+    // Porta do prédio meio transparente quando o jogador chega perto dela.
+    ES.atualizar = function (dt) {
+      var p = S.personagem && S.personagem.raiz.position;
+      var pt = ES.porta;
+      if (!p || !pt) return;
+      var dx = p.x - pt.x;
+      var dz = p.z - pt.z;
+      var perto = p.y < 0.5 && dx * dx + dz * dz < 2.6 * 2.6;
+      var alvo = perto ? 0.3 : 1;
+      if (Math.abs(pt.opacidade - alvo) < 0.01) return;
+      pt.opacidade += (alvo - pt.opacidade) * Math.min(1, dt * 8);
+      if (Math.abs(pt.opacidade - alvo) < 0.01) pt.opacidade = alvo;
+      var transp = pt.opacidade < 0.99;
+      [pt.mat, pt.matGrade].forEach(function (m) {
+        if (m.transparent !== transp) {
+          m.transparent = transp;
+          m.needsUpdate = true;
+        }
+        m.opacity = pt.opacidade;
+        m.depthWrite = !transp;
+      });
+    };
+  });
+
+
+  /* ---- 48-vizinha.js ---- */
+
+  /* ================================================================== */
+  secao('W12-vizinha', function () {
+    // Dona Graça: vizinha encostada na grade, perto do portão do condomínio.
+    var V = S.vizinha = {};
+    var POS = { x: -4.3, z: 17.0, angulo: -2.35 };
+    V.POS = POS;
+    var PELE = '#A8714B';
+    var CABELO = '#C9C6C0';
+    var BLUSA = '#D9658A';
+    var SAIA = '#3E5C80';
+
+    function texRosto() {
+      return S.textura(16, 16, function (ctx) {
+        ctx.fillStyle = PELE;
+        ctx.fillRect(0, 0, 16, 16);
+        ctx.fillStyle = CABELO;
+        ctx.fillRect(0, 0, 16, 2);
+        ctx.fillStyle = '#2B1A10';
+        ctx.fillRect(4, 6, 3, 1);
+        ctx.fillRect(9, 6, 3, 1);
+        ctx.fillRect(4, 8, 2, 2);
+        ctx.fillRect(10, 8, 2, 2);
+        // Óculos.
+        ctx.fillStyle = 'rgba(40,40,40,0.9)';
+        ctx.fillRect(3, 7, 4, 1);
+        ctx.fillRect(9, 7, 4, 1);
+        ctx.fillRect(7, 7, 2, 1);
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.fillRect(7, 10, 2, 2);
+        ctx.fillStyle = '#8A3B3B';
+        ctx.fillRect(6, 13, 4, 1);
+        ctx.fillStyle = 'rgba(0,0,0,0.12)';
+        ctx.fillRect(3, 11, 2, 1);
+        ctx.fillRect(11, 11, 2, 1);
+      });
+    }
+    function texBlusa(frente) {
+      return S.textura(32, 32, function (ctx) {
+        ctx.fillStyle = BLUSA;
+        ctx.fillRect(0, 0, 32, 32);
+        // Estampa de florzinhas.
+        var flores = [[4, 5], [14, 9], [24, 4], [8, 18], [20, 20], [28, 14], [3, 27], [16, 28]];
+        flores.forEach(function (f) {
+          ctx.fillStyle = '#FFF3B0';
+          ctx.fillRect(f[0], f[1], 3, 3);
+          ctx.fillStyle = '#F7941D';
+          ctx.fillRect(f[0] + 1, f[1] + 1, 1, 1);
+        });
+        if (frente) {
+          ctx.fillStyle = 'rgba(0,0,0,0.15)';
+          ctx.fillRect(12, 0, 8, 3);
+        }
+      });
+    }
+
+    V.montar = function () {
+      var mPele = S.mat(parseInt(PELE.slice(1), 16));
+      var mCabelo = S.mat(parseInt(CABELO.slice(1), 16));
+      var mBlusa = S.mat(parseInt(BLUSA.slice(1), 16));
+      var mSaia = S.mat(parseInt(SAIA.slice(1), 16));
+      var mChinelo = S.mat(0x2f6fc0);
+      var raiz = S.grupo(POS.x, 0, POS.z);
+      raiz.rotation.y = POS.angulo;
+      var corpo = S.grupo(0, 0, 0, raiz);
+      var partes = [];
+      // Saia comprida e pernas.
+      partes.push(S.caixa(0.54, 0.62, 0.34, mSaia, 0, 0.5, 0, corpo));
+      [-0.12, 0.12].forEach(function (x) {
+        partes.push(S.caixa(0.16, 0.2, 0.18, mPele, x, 0.1, 0.02, corpo));
+        partes.push(S.caixa(0.2, 0.05, 0.3, mChinelo, x, 0.025, 0.05, corpo));
+      });
+      var tronco = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.5, 0.32), [mBlusa, mBlusa, mBlusa, mBlusa, new THREE.MeshLambertMaterial({ map: texBlusa(true) }), new THREE.MeshLambertMaterial({ map: texBlusa(false) })]);
+      tronco.position.set(0, 1.05, 0);
+      tronco.castShadow = true;
+      corpo.add(tronco);
+      partes.push(tronco);
+      // Braços cruzados na frente (apoiada na grade).
+      [-1, 1].forEach(function (lado) {
+        var piv = S.grupo(lado * 0.38, 1.24, 0, corpo);
+        piv.rotation.x = -1.2;
+        piv.rotation.z = lado * 0.35;
+        partes.push(S.caixa(0.17, 0.26, 0.19, mBlusa, 0, -0.12, 0, piv));
+        partes.push(S.caixa(0.14, 0.28, 0.15, mPele, 0, -0.38, 0, piv));
+      });
+      partes.push(S.caixa(0.18, 0.06, 0.16, mPele, 0, 1.33, 0, corpo));
+      var pivCabeca = S.grupo(0, 1.34, 0, corpo);
+      var cabeca = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.46), [mPele, mPele, mCabelo, mPele, new THREE.MeshLambertMaterial({ map: texRosto() }), mCabelo]);
+      cabeca.position.y = 0.26;
+      cabeca.castShadow = true;
+      pivCabeca.add(cabeca);
+      partes.push(cabeca);
+      // Cabelo grisalho com coque.
+      partes.push(S.caixa(0.54, 0.12, 0.5, mCabelo, 0, 0.55, -0.01, pivCabeca));
+      partes.push(S.caixa(0.54, 0.3, 0.08, mCabelo, 0, 0.38, -0.24, pivCabeca));
+      partes.push(S.caixa(0.24, 0.2, 0.2, mCabelo, 0, 0.6, -0.26, pivCabeca));
+
+      var etiqueta = new THREE.Sprite(new THREE.SpriteMaterial({ map: S.texturaNome('Dona Graça', 'rgba(30,140,70,0.9)'), depthTest: false, transparent: true }));
+      etiqueta.scale.set(1.3, 0.2, 1);
+      etiqueta.position.set(0, 2.15, 0);
+      etiqueta.renderOrder = 10;
+      raiz.add(etiqueta);
+
+      S.colisor(POS.x, POS.z, 0.55, 0.55);
+      V.npc = { raiz: raiz, corpo: corpo, cabeca: pivCabeca, etiqueta: etiqueta, yaw: 0, t: 0 };
+      S.interativo(partes, {
+        id: 'vizinha',
+        nome: 'Dona Graça (vizinha)',
+        ancora: new THREE.Vector3(POS.x - 0.8, 0, POS.z - 0.8)
+      });
+    };
+
+    // Respira e acompanha o jogador com a cabeça quando ele está perto.
+    V.atualizar = function (dt) {
+      var n = V.npc;
+      if (!n || !S.personagem) return;
+      n.t += dt;
+      n.corpo.position.y = Math.sin(n.t * 1.8) * 0.008;
+      var p = S.personagem.raiz.position;
+      var dx = p.x - n.raiz.position.x;
+      var dz = p.z - n.raiz.position.z;
+      var alvo = 0;
+      if (dx * dx + dz * dz < 64) {
+        alvo = Math.max(-1.1, Math.min(1.1, S.difAngulo(n.raiz.rotation.y, Math.atan2(dx, dz))));
+      }
+      n.yaw += (alvo - n.yaw) * Math.min(1, dt * 5);
+      n.cabeca.rotation.y = n.yaw;
+    };
+
+    // Conversa: os dois se viram um para o outro e a câmera alterna por cima do ombro.
+    V.conversar = function () {
+      var E = S.estado;
+      var n = V.npc;
+      var p = S.personagem;
+      var pp = p.raiz.position;
+      var np = n.raiz.position;
+      var paraNpc = Math.atan2(np.x - pp.x, np.z - pp.z);
+      p.angulo = paraNpc;
+      p.raiz.rotation.y = paraNpc;
+      n.raiz.rotation.y = paraNpc + Math.PI;
+      n.yaw = 0;
+      n.cabeca.rotation.y = 0;
+      var dx = np.x - pp.x;
+      var dz = np.z - pp.z;
+      var d = Math.sqrt(dx * dx + dz * dz) || 1;
+      var ux = dx / d;
+      var uz = dz / d;
+      var lx = -uz;
+      var lz = ux;
+      function ombro(de, para, alturaPara) {
+        var sinal = de === pp ? 1 : -1;
+        var dirX = sinal * ux;
+        var dirZ = sinal * uz;
+        return {
+          pos: [de.x - dirX * 1.1 + lx * 0.6 * sinal, 1.85, de.z - dirZ * 1.1 + lz * 0.6 * sinal],
+          alvo: [para.x, alturaPara, para.z]
+        };
+      }
+      var vendoNpc = ombro(pp, np, 1.6);
+      var vendoAluno = ombro(np, pp, pp.y + 1.6);
+      var filho = S.aluno.genero === 'f' ? 'minha filha' : 'meu filho';
+      var primeira = !E.falouVizinha;
+      var falas = primeira ? [
+        { quem: 'aluno', tomada: vendoAluno, texto: 'Oi, Dona Graça! A senhora sabe me informar onde fica o ponto de Wi-Fi comunitário?' },
+        { quem: 'vizinha', tomada: vendoNpc, texto: 'Sei sim, ' + filho + '! Fica no terreno do lado da escola, a EETI. É de graça, qualquer um pode usar.' },
+        { quem: 'vizinha', tomada: vendoNpc, texto: 'Sai por esse portão, sobe a Rua C até a Rua A e vai reto até a Rua D. Desce um pouquinho que é do lado direito.' },
+        { quem: 'vizinha', tomada: vendoNpc, texto: 'Tem um banco coberto, roxinho, e uma casinha verde escrita CENTRAL. Meu neto fez o trabalho da escola lá ontem!' },
+        { quem: 'aluno', tomada: vendoAluno, texto: 'Valeu, Dona Graça! Vou lá agora.' }
+      ] : [
+        { quem: 'vizinha', tomada: vendoNpc, texto: 'É do lado da escola, ' + filho + ': Rua C, Rua A e desce na Rua D. Banco coberto e casinha verde!' }
+      ];
+      S.cenaCurta({
+        falas: falas,
+        aoFim: function () {
+          E.falouVizinha = true;
+          if (!E.chegouPonto) {
+            E.viuMapa = true;
+            S.ui.destacarMapa(false);
+            S.aviso('A seta embaixo da tela mostra o caminho até o ponto.', 'info', 3600);
+          }
+        }
+      });
+    };
+  });
+
+
   /* ---- 50-personagem.js ---- */
 
   /* ================================================================== */
@@ -3762,8 +4199,10 @@
     var desejada = null;
     var alvo = null;
     var alvoAtual = null;
+    var ultimaCamera = null;
 
     S.alturaChao = function (x, z) {
+      if (S.area && S.area.id === 'escada') return S.escada.altura(x, z);
       if (S.area && S.area.id === 'bairro' && S.dentro(S.PONTO.laje, x, z)) return S.PONTO.laje.y;
       return 0;
     };
@@ -3841,6 +4280,12 @@
     S.poseCamera = function (pos, saidaPos, saidaAlvo) {
       var p = S.personagem;
       var esticada = S.camera.aspect < 1.5 ? 1.15 : 1;
+      S.idCamera = S.area ? S.area.id : '';
+      // Escadaria: duas câmeras fixas (2º andar e térreo), troca seca entre elas.
+      if (S.area && S.area.id === 'escada') {
+        S.idCamera = 'escada' + S.escada.poseCamera(pos, saidaPos, saidaAlvo);
+        return;
+      }
       // Dentro de casa e da central: câmera fixa, enquadrando o cômodo inteiro.
       if (S.area && S.area.id === 'apto') {
         var O = S.APTO;
@@ -3870,6 +4315,11 @@
         alvoAtual = new THREE.Vector3();
       }
       S.poseCamera(S.personagem.raiz.position, desejada, alvo);
+      // Mudou de câmera fixa (ex.: escada do 2º andar → térreo): corte seco.
+      if (S.idCamera !== ultimaCamera) {
+        ultimaCamera = S.idCamera;
+        if (S.idCamera.indexOf('escada') === 0) imediato = true;
+      }
       if (imediato) {
         S.camera.position.copy(desejada);
         alvoAtual.copy(alvo);
@@ -4164,8 +4614,8 @@
         id: 'ir',
         texto: 'Vá até o Ponto de Internet Comunitário. Aperte M (ou MAPA) para ver o caminho.',
         feita: function () { return E.chegouPonto; },
-        alvos: function () { return naArea('apto') ? ['portaApto'] : ['@ponto']; },
-        dica1: 'Abra o mapa: o ponto fica no terreno ao lado da escola (EETI), entre a Rua A e a Rua Principal.',
+        alvos: function () { return naArea('apto') ? ['portaApto'] : naArea('escada') ? ['portaSaidaPredio'] : ['@ponto']; },
+        dica1: 'Abra o mapa ou pergunte para a Dona Graça, perto do portão: o ponto fica ao lado da escola (EETI).',
         dica2: 'Saia pelo portão do condomínio, suba a Rua C até a Rua A, siga a Rua A até a Rua D e desça: o ponto fica à direita.'
       },
       {
@@ -4308,7 +4758,10 @@
         case 'cabo': return E.tentouEnviar ? 'Pegar o cabo de rede' : 'Ver o cabo de rede';
         case 'roteadorCasa': return 'Ver o roteador de casa';
         case 'portaApto': return 'Sair de casa';
-        case 'portaCasa': return 'Entrar em casa';
+        case 'portaAptoEscada': return 'Entrar em casa';
+        case 'portaSaidaPredio': return 'Sair do prédio';
+        case 'portaCasa': return 'Entrar no prédio';
+        case 'vizinha': return S.estado.falouVizinha ? 'Falar de novo com a Dona Graça' : 'Perguntar à Dona Graça onde fica o ponto';
         case 'portaCentral': return 'Entrar na central';
         case 'portaSaidaCentral': return 'Sair da central';
         case 'transformador': return E.energia ? 'Ver o transformador (ligado)' : 'Ligar o transformador';
@@ -4355,6 +4808,7 @@
     J.lugar = function () {
       if (!S.area) return '';
       if (S.area.id === 'apto') return 'Sua casa · Bloco ' + S.CASA.bloco + ', apto ' + S.CASA.apto;
+      if (S.area.id === 'escada') return 'Escada do Bloco ' + S.CASA.bloco;
       if (S.area.id === 'central') return 'Central do Ponto Comunitário';
       var p = S.personagem.raiz.position;
       if (S.dentro(S.MAPA.ponto, p.x, p.z)) return 'Ponto de Internet Comunitário';
@@ -4430,10 +4884,21 @@
           S.aviso('Pegue o notebook e o cabo de rede antes de sair.', 'alerta', 3000);
           return;
         }
-        J.trocarArea('bairro', S.CASA.saida.x, S.CASA.saida.z, 0, 'Saindo de casa…');
+        var e = S.escada.saidaApto;
+        J.trocarArea('escada', e.x, e.z, e.angulo, 'Saindo de casa…');
+      },
+      portaAptoEscada: function () {
+        J.trocarArea('apto', S.apto.saida.x, S.apto.saida.z, S.apto.saida.angulo, 'Entrando em casa…');
+      },
+      portaSaidaPredio: function () {
+        J.trocarArea('bairro', S.CASA.saida.x, S.CASA.saida.z, 0, 'Saindo do prédio…');
       },
       portaCasa: function () {
-        J.trocarArea('apto', S.apto.saida.x, S.apto.saida.z, S.apto.saida.angulo, 'Entrando em casa…');
+        var e = S.escada.entradaRua;
+        J.trocarArea('escada', e.x, e.z, e.angulo, 'Entrando no prédio…');
+      },
+      vizinha: function () {
+        S.vizinha.conversar();
       },
       portaCentral: function () {
         var e = S.centralInt.entrada;
@@ -4531,6 +4996,7 @@
         S.usarArea(id);
         S.posicionarPersonagem(x, z, angulo);
         if (id === 'apto') S.posicionarSol(S.APTO.ox, S.APTO.oz);
+        else if (id === 'escada') S.posicionarSol(S.ESCADA.ox, S.ESCADA.oz);
         else if (id === 'central') S.posicionarSol(S.CENTRAL.ox, S.CENTRAL.oz);
         else S.posicionarSol(x, z);
         S.atualizarCamera(0, true);
@@ -4543,7 +5009,7 @@
         J.atualizarMissoes();
         if (id === 'bairro' && !E.viuMapa && !E.chegouPonto) {
           S.ui.destacarMapa(true);
-          S.aviso('Aperte M (ou o botão do mapa) para ver onde fica o ponto.', 'info', 4200);
+          S.aviso('Aperte M para ver o mapa, ou pergunte para a Dona Graça, perto do portão.', 'info', 4600);
         }
       });
     };
@@ -4810,7 +5276,7 @@
       var c1 = S.MAPA.condominios[0];
       var prefixo = [];
       var inicio = { x: x, z: z };
-      if (S.area && S.area.id === 'apto') {
+      if (S.area && (S.area.id === 'apto' || S.area.id === 'escada')) {
         inicio = { x: S.CASA.saida.x, z: S.CASA.saida.z };
       }
       if (S.dentro(c1, inicio.x, inicio.z)) {
@@ -4871,7 +5337,9 @@
       if (S.area && S.area.id === 'bairro' && S.personagem) {
         var p = S.personagem.raiz.position;
         S.posicionarSol(p.x, p.z);
+        S.vizinha.atualizar(dt);
       }
+      if (S.area && S.area.id === 'escada') S.escada.atualizar(dt);
       if (S.area && S.area.id === 'central' && E.energia && agora - ultimoRack > 120) {
         ultimoRack = agora;
         PT.desenharRack();
@@ -5551,8 +6019,9 @@
       }
       // Você está aqui.
       var ent = S.ponto.entradaCentral;
-      var vx = S.area.id === 'apto' ? S.CASA.porta.x : S.area.id === 'central' ? ent.x : p.x;
-      var vz = S.area.id === 'apto' ? S.CASA.porta.z : S.area.id === 'central' ? ent.z : p.z;
+      var emCasa = S.area.id === 'apto' || S.area.id === 'escada';
+      var vx = emCasa ? S.CASA.porta.x : S.area.id === 'central' ? ent.x : p.x;
+      var vz = emCasa ? S.CASA.porta.z : S.area.id === 'central' ? ent.z : p.z;
       ctx.fillStyle = '#2D7FE0';
       ctx.strokeStyle = '#FFFFFF';
       ctx.lineWidth = 3;
@@ -5560,7 +6029,7 @@
       ctx.arc(X(vx), Z(vz), 7, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      texto(S.area.id === 'apto' ? 'Você (em casa)' : S.area.id === 'central' ? 'Você (na central)' : 'Você', vx, vz - 2.4, '#FFFFFF', 'bold 12px Arial');
+      texto(S.area.id === 'apto' ? 'Você (em casa)' : S.area.id === 'escada' ? 'Você (no prédio)' : S.area.id === 'central' ? 'Você (na central)' : 'Você', vx, vz - 2.4, '#FFFFFF', 'bold 12px Arial');
 
       var leg = S.el('div', { display: 'flex', gap: '14px', flexWrap: 'wrap', marginTop: '8px', fontSize: '12px', color: C.cinza }, null, m.corpo);
       S.el('span', { color: '#6FA8F0' }, '● Você', leg);
@@ -5585,7 +6054,8 @@
 
     var FALANTES = {
       aluno: { nome: function () { return S.aluno.nome; }, cor: '#4F9BFF', texto: '#071430' },
-      pensando: { nome: function () { return S.aluno.nome + ' (pensando)'; }, cor: '#9D95D8', texto: '#071430' }
+      pensando: { nome: function () { return S.aluno.nome + ' (pensando)'; }, cor: '#9D95D8', texto: '#071430' },
+      vizinha: { nome: function () { return 'Dona Graça'; }, cor: '#39C46A', texto: '#071430' }
     };
 
     function v3(a) {
@@ -5942,6 +6412,10 @@
         S.criarArea('apto');
         S.apto.montar();
       }],
+      ['Construindo a escada do prédio…', function () {
+        S.criarArea('escada');
+        S.escada.montar();
+      }],
       ['Organizando a central do ponto…', function () {
         S.criarArea('central');
         S.centralInt.montar();
@@ -5976,6 +6450,7 @@
           S.areas.bairro.grupo.visible = true;
           S.areas.apto.grupo.visible = true;
           S.areas.central.grupo.visible = true;
+          S.areas.escada.grupo.visible = true;
           S.posicionarPersonagem(S.apto.inicio.x, S.apto.inicio.z, S.apto.inicio.angulo);
           S.atualizarCamera(0, true);
           S.renderer.compile(S.cena, S.camera);
@@ -6200,7 +6675,7 @@
 
 (function () {
   // Painel de diagnóstico (F9): FPS, desenho, seções carregadas e erros.
-  var ESPERADAS = ["B01-constantes","B02-utilitarios","U01-raiz-e-tema","U02-modal-e-avisos","U03-inicio","U04-comandos","U05-carregamento","U06-hud","U07-controles-toque","W01-render-base","T01-texturas","W02-bairro-chao-e-ruas","W03-blocos","W04-veiculos-e-plantas","W05-condominios","W06-postes-placas-escola","W07-ponto-comunitario","W08-montar-bairro","W09-apartamento","W10-central-por-dentro","P01-personagem","P02-movimento-camera","E01-teclado-mouse","J01-estado-e-objetivos","J02-acoes","J03-mundo-vivo","M01-telas-base","M02-notebook","M03-equipamentos","M04-mapa","C01-cenas","L01-carregamento","L02-laco-e-qualidade","F01-tela-final","L03-inicio"];
+  var ESPERADAS = ["B01-constantes","B02-utilitarios","U01-raiz-e-tema","U02-modal-e-avisos","U03-inicio","U04-comandos","U05-carregamento","U06-hud","U07-controles-toque","W01-render-base","T01-texturas","W02-bairro-chao-e-ruas","W03-blocos","W04-veiculos-e-plantas","W05-condominios","W06-postes-placas-escola","W07-ponto-comunitario","W08-montar-bairro","W09-apartamento","W10-central-por-dentro","W11-escadaria","W12-vizinha","P01-personagem","P02-movimento-camera","E01-teclado-mouse","J01-estado-e-objetivos","J02-acoes","J03-mundo-vivo","M01-telas-base","M02-notebook","M03-equipamentos","M04-mapa","C01-cenas","L01-carregamento","L02-laco-e-qualidade","F01-tela-final","L03-inicio"];
   var painel = null;
   var timer = null;
   var gpu = null;

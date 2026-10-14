@@ -6,7 +6,7 @@
   /* Ponto de Internet Comunitário · Residencial Ataliba — simulação 3D (Three.js, visual PS1/PS2) */
 
   var S = window.__PONTO = {
-    versao: '0.1.0',
+    versao: '2.1.2',
     marcas: [],
     erros: [],
     fase: 'inicio', // inicio → comandos → carregando → cena → jogo → fim
